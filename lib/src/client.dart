@@ -166,7 +166,7 @@ class GreenFlagsClient {
       latitude: geofence.latitude,
       longitude: geofence.longitude,
     );
-    final outside = haversineMeters(coords, center) > geofence.radiusMeters;
+    final outside = geoDistanceMeters(coords, center) > geofence.radiusMeters;
     if (!outside) {
       return flag;
     }

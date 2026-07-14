@@ -231,6 +231,21 @@ flags.setCoordinates(const Coordinates(latitude: 25.6866, longitude: -100.3161))
 flags.setCoordinates(null); // back to "ignore geofence" for every flag
 ```
 
+### Distance to a geofence
+
+Need to *show* how far the end-user is from a geofence (e.g. "230 m away")? Use `geoDistanceMeters` — the exact great-circle (haversine) calculation the SDK runs internally, exported so you don't have to reimplement it:
+
+```dart
+import 'package:greenflags/greenflags.dart';
+
+final meters = geoDistanceMeters(
+  const Coordinates(latitude: 19.4326, longitude: -99.1332), // end-user
+  const Coordinates(latitude: 19.4300, longitude: -99.1400), // geofence center
+);
+```
+
+Formatting (units, decimals, locale) is left to your app.
+
 ## Types
 
 ```dart

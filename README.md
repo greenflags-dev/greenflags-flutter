@@ -361,3 +361,14 @@ Semver, while in `0.x`: `MINOR` can include API changes (no stability guarantee 
 - [API reference](https://greenflags.dev/docs/)
 - [`@greenflags/client`](https://www.npmjs.com/package/@greenflags/client) — JavaScript/TypeScript SDK
 - [`@greenflags/mcp`](https://www.npmjs.com/package/@greenflags/mcp) — MCP server for AI agents
+
+## Percentage rollout & variants
+
+Flags can carry a percentage rollout or weighted variants; the SDK resolves them locally and deterministically per user (see `docs/rollout-hash-spec.md` in the repo).
+
+```dart
+final flags = GreenFlagsClient(url: url, apiToken: token, user: 'user-123');
+flags.setUser('user-456'); // switch identity, no network request
+```
+
+Without an explicit user the SDK uses an in-memory anonymous id (stable for the client's lifetime). Pass a stable `user` for cross-session stickiness.

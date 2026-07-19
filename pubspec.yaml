@@ -2,7 +2,7 @@ name: greenflags
 description: >-
   Dart/Flutter SDK for GreenFlags feature flags. Snapshot + cache reads,
   polling, geofence evaluation and offline persistence — evaluated at the edge.
-version: 0.2.0
+version: 0.3.0
 homepage: https://greenflags.dev
 repository: https://github.com/greenflags-dev/greenflags-flutter
 documentation: https://greenflags.dev/docs/

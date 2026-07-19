@@ -2,6 +2,17 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: [SemVer](https://semver.org/) (while in `0.x`, a MINOR release may include breaking changes; strict semver applies from `1.0.0` onward).
 
+## [0.3.0] - 2026-07-18
+
+### Added
+- Percentage rollout evaluation: flags may carry `rollout: { percentage }`; the SDK buckets the current user deterministically (FNV-1a 32-bit over UTF-8 bytes of `"flagKey:userKey"`, mod 100 — see `docs/rollout-hash-spec.md`) and serves the value when `bucket < percentage`, or the off value (`false`/`null`) otherwise. Conformance locked by `sdks/rollout-test-vectors.json`.
+- Multivariate flags: `variants: [{ name, weight, value }]` assigned by cumulative weight ranges over the same bucket, variants ordered by name in UTF-8 byte order. A bucket beyond the total weight serves the base value.
+- `user` constructor parameter and `setUser(String?)` — stable user key for bucketing; clearing reverts to an in-memory anonymous id (deterministic within the client's lifetime; pass a stable `user` for cross-session stickiness).
+- `Rollout`, `FlagVariant`, `WeightedVariant` types and `rolloutBucket`/`assignVariant` exported from the package root.
+
+### Changed
+- Evaluation chain: geofence → variants → rollout (AND; a rule with missing input is skipped). All read paths and `snapshotStream` emissions remain evaluated.
+
 ## [0.2.0] - 2026-07-11
 
 ### Added

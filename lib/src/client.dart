@@ -1,12 +1,26 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
 import 'geo.dart';
 import 'persistence.dart';
+import 'rollout.dart';
 import 'transport.dart';
 import 'types.dart';
+
+String _generateAnonymousId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  // RFC 4122 v4 shape.
+  bytes[6] = (bytes[6] & 0x0F) | 0x40;
+  bytes[8] = (bytes[8] & 0x3F) | 0x80;
+  final hex =
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
 
 /// Client for the GreenFlags read API.
 ///
@@ -27,11 +41,13 @@ class GreenFlagsClient {
     required String url,
     required String apiToken,
     Coordinates? coordinates,
+    String? user,
     SnapshotStore? store,
     http.Client? httpClient,
   })  : _url = url.trim().replaceFirst(RegExp(r'/$'), ''),
         _apiToken = apiToken,
         _coordinates = coordinates,
+        _explicitUser = user,
         _store = store,
         _httpClient = httpClient ?? http.Client(),
         _ownsHttpClient = httpClient == null;
@@ -43,7 +59,19 @@ class GreenFlagsClient {
   final bool _ownsHttpClient;
 
   Coordinates? _coordinates;
+  String? _explicitUser;
+  String? _anonymousId;
   Map<String, Flag> _snapshot = {};
+
+  String _resolveUserKey() {
+    final explicit = _explicitUser;
+    if (explicit != null) {
+      return explicit;
+    }
+    // In-memory anonymous identity: deterministic within this client's
+    // lifetime. Pass a stable `user` for cross-session stickiness.
+    return _anonymousId ??= _generateAnonymousId();
+  }
   Timer? _pollingTimer;
   final StreamController<Map<String, Flag>> _controller =
       StreamController.broadcast();
@@ -146,6 +174,14 @@ class GreenFlagsClient {
     _notify();
   }
 
+  /// Sets (or clears, with `null`) the stable user key used for percentage
+  /// rollout and variant bucketing. Clearing reverts to an in-memory
+  /// anonymous id. No network request is made.
+  void setUser(String? user) {
+    _explicitUser = user;
+    _notify();
+  }
+
   /// Stops polling and releases resources. The client must not be used
   /// afterwards.
   void dispose() {
@@ -156,21 +192,49 @@ class GreenFlagsClient {
     }
   }
 
+  Flag _offValue(Flag flag) =>
+      flag.copyWith(value: flag.type == FlagType.boolean ? false : null);
+
+  // Evaluation chain per docs/rollout-hash-spec.md: geofence first, then
+  // variants/rollout, AND semantics. A rule with missing input is skipped.
   Flag _evaluate(Flag flag) {
     final coords = _coordinates;
     final geofence = flag.geofence;
-    if (coords == null || geofence == null) {
-      return flag;
+    if (coords != null && geofence != null) {
+      final center = Coordinates(
+        latitude: geofence.latitude,
+        longitude: geofence.longitude,
+      );
+      final outside =
+          geoDistanceMeters(coords, center) > geofence.radiusMeters;
+      if (outside) {
+        return _offValue(flag);
+      }
     }
-    final center = Coordinates(
-      latitude: geofence.latitude,
-      longitude: geofence.longitude,
-    );
-    final outside = geoDistanceMeters(coords, center) > geofence.radiusMeters;
-    if (!outside) {
-      return flag;
+
+    final variants = flag.variants;
+    if (variants != null && variants.isNotEmpty) {
+      final assigned = assignVariant(flag.key, _resolveUserKey(), [
+        for (final v in variants)
+          WeightedVariant(name: v.name, weight: v.weight),
+      ]);
+      if (assigned == null) {
+        return flag; // beyond total weight → base value
+      }
+      final variant = variants.firstWhere((v) => v.name == assigned);
+      return flag.copyWith(value: variant.value);
     }
-    return flag.copyWith(value: flag.type == FlagType.boolean ? false : null);
+
+    final rollout = flag.rollout;
+    if (rollout != null) {
+      final included =
+          isIncludedInRollout(flag.key, _resolveUserKey(), rollout.percentage);
+      if (!included) {
+        return _offValue(flag);
+      }
+    }
+
+    return flag;
   }
 
   void _notify() {

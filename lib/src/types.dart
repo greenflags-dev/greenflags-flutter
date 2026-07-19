@@ -52,16 +52,53 @@ class Geofence {
       };
 }
 
+/// Percentage rollout rule: `percentage`% of users (bucketed
+/// deterministically) receive the flag's value, the rest its off value.
+class Rollout {
+  const Rollout({required this.percentage});
+
+  factory Rollout.fromJson(Map<String, Object?> json) =>
+      Rollout(percentage: (json['percentage'] as num).toInt());
+
+  final int percentage;
+
+  Map<String, Object?> toJson() => {'percentage': percentage};
+}
+
+/// A weighted variant of a multivariate flag.
+class FlagVariant {
+  const FlagVariant({
+    required this.name,
+    required this.weight,
+    required this.value,
+  });
+
+  factory FlagVariant.fromJson(Map<String, Object?> json) => FlagVariant(
+        name: json['name'] as String,
+        weight: (json['weight'] as num).toInt(),
+        value: json['value'],
+      );
+
+  final String name;
+  final int weight;
+  final Object? value;
+
+  Map<String, Object?> toJson() =>
+      {'name': name, 'weight': weight, 'value': value};
+}
+
 /// A feature flag as served by `GET /v1/flags`.
 ///
 /// [value] holds `bool`, `String`, `num`, `Map<String, Object?>` or `null`
-/// depending on [type] (and geofence evaluation).
+/// depending on [type] (and geofence/rollout/variant evaluation).
 class Flag {
   const Flag({
     required this.key,
     required this.type,
     required this.value,
     this.geofence,
+    this.rollout,
+    this.variants,
   });
 
   factory Flag.fromJson(Map<String, Object?> json) => Flag(
@@ -73,21 +110,43 @@ class Flag {
             : Geofence.fromJson(
                 (json['geofence'] as Map).cast<String, Object?>(),
               ),
+        rollout: json['rollout'] == null
+            ? null
+            : Rollout.fromJson(
+                (json['rollout'] as Map).cast<String, Object?>(),
+              ),
+        variants: json['variants'] == null
+            ? null
+            : [
+                for (final item in json['variants'] as List)
+                  FlagVariant.fromJson((item as Map).cast<String, Object?>()),
+              ],
       );
 
   final String key;
   final FlagType type;
   final Object? value;
   final Geofence? geofence;
+  final Rollout? rollout;
+  final List<FlagVariant>? variants;
 
-  Flag copyWith({Object? value}) =>
-      Flag(key: key, type: type, value: value, geofence: geofence);
+  Flag copyWith({Object? value}) => Flag(
+        key: key,
+        type: type,
+        value: value,
+        geofence: geofence,
+        rollout: rollout,
+        variants: variants,
+      );
 
   Map<String, Object?> toJson() => {
         'key': key,
         'type': type.wire,
         'value': value,
         if (geofence != null) 'geofence': geofence!.toJson(),
+        if (rollout != null) 'rollout': rollout!.toJson(),
+        if (variants != null)
+          'variants': [for (final v in variants!) v.toJson()],
       };
 }
 
